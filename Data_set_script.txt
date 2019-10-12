@@ -1,0 +1,70 @@
+
+----------------------combining the Customers,orders,order_Payments data set and geting geolocation information for customers ------------------------------
+drop table if exists temp.olist_order_customer;
+create table temp.olist_order_customer
+as
+select distinct a.customer_id,a.customer_unique_id,a.customer_zip_code_prefix,a.customer_city,a.customer_state
+,b.order_id,b.order_status,b.order_purchase_timestamp,b.order_approved_at,b.order_delivered_carrier_date,b.order_delivered_customer_date,
+b.order_estimated_delivery_date,c.payment_type,c.payment_installments,c.payment_value,d.loc as total_order_byzip_by_customer
+ from
+temp.olis_customer_1 a
+join
+temp.olist_orders b
+ on a.customer_id=b.customer_id
+join temp.olist_order_payments c
+on c.order_id=b.order_id
+join (
+select geolocation_zip_code_prefix,
+count(concat(geolocation_lat,geolocation_lng)) loc from temp.olist_geolocation
+group by geolocation_zip_code_prefix) d
+on a.customer_zip_code_prefix = d.geolocation_zip_code_prefix
+;
+
+
+------------------------Translating product categories to English ----------------------------
+
+create table temp.olist_product_new
+as
+select a.product_id,b.product_category_name_english as product_category,a.product_name_lenght,a.product_description_lenght,
+a.product_photos_qty,a.product_weight_g,a.product_length_cm,a.product_height_cm,a.product_width_cm
+from temp.olist_products a join temp.olist_product_trans b where a.product_category_name=b.product_category_name;
+
+
+------------------------Getting the order details and seller information -----------------------
+Drop table if exists temp.olist_order_dtls;
+create table temp.olist_order_dtls
+as
+select distinct a.order_id,a.order_item_id,a.product_id,a.seller_id,a.shipping_limit_date,a.price,a.freight_value
+,b.product_category,b.product_weight_g,b.product_photos_qty,b.product_length_cm,b.product_height_cm,b.product_width_cm,
+c.seller_city,c.seller_state,c.seller_zip_code_prefix,d.loc as total_order_byzip_by_seller,e.review_id,e.review_score,
+e.review_comment_title,e.review_comment_message,e.review_creation_date,e.review_answer_timestamp
+from temp.olist_order_items a
+join
+temp.olist_product_new b
+on a.product_id=b.product_id
+join temp.olist_sellers_new c
+on c.seller_id=a.seller_id
+join 
+(
+select geolocation_zip_code_prefix,
+count(concat(geolocation_lat,geolocation_lng)) loc from temp.olist_geolocation
+group by geolocation_zip_code_prefix)d
+on d.geolocation_zip_code_prefix=c.seller_zip_code_prefix
+join temp.olist_order_reviews e
+on e.order_id=a.order_id;
+
+
+
+--------------------Final query to get the complete merged dataset ------------------------
+
+select 
+distinct a.customer_id,a.customer_unique_id,a.customer_zip_code_prefix,a.customer_city,a.customer_state
+,a.order_id,a.order_status,a.order_purchase_timestamp,a.order_approved_at,a.order_delivered_carrier_date,a.order_delivered_customer_date,
+a.order_estimated_delivery_date,a.payment_type,a.payment_installments,a.payment_value,a.total_order_byzip_by_customer,
+b.order_item_id,b.product_id,b.seller_id,b.shipping_limit_date,b.price,b.freight_value
+,b.product_category,b.product_weight_g,b.product_photos_qty,b.product_length_cm,b.product_height_cm,b.product_width_cm,
+b.seller_city,b.seller_state,b.seller_zip_code_prefix,b.total_order_byzip_by_seller,b.review_id,b.review_score,
+b.review_comment_title,b.review_comment_message,b.review_creation_date,b.review_answer_timestamp
+from temp.olist_order_customer a
+join temp.olist_order_dtls b
+on a.order_id=b.order_id;
